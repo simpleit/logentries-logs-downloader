@@ -1,0 +1,198 @@
+#!/bin/bash
+
+# ****************************************************************************
+#           .:: LogEntries Downloader ::.
+#
+#   Author: Sylvain Mauduit (@Swop)
+#   Company: Simple IT - http://www.simple-it.fr
+#
+#   Usage:
+#   $ logentries-downloader (-s star_date -e end_date | -y) 
+#           [-a logentries_account_key]
+#           [-l logentries_log_address]
+#           [-f filter]
+#           [-c count]
+#           [-q]
+#
+#   Logentries account key and log address can be set with options parameters or
+#   with LOGENTRIES_ACCOUNT_KEY and LOGENTRIES_LOG_ADDR environment variables.
+# ****************************************************************************
+
+SCRIPT_PATH=$(dirname $0)
+SCRIPT_VERSION=0.1
+
+# Import configuration from config file if present
+test -f ${SCRIPT_PATH}/config && . ${SCRIPT_PATH}/config
+
+# Override config if env variables are set
+if [ -n "$LOGENTRIES_ACCOUNT_KEY" ]; then ACCOUNT_KEY=$LOGENTRIES_ACCOUNT_KEY; fi
+if [ -n "$LOGENTRIES_LOG_ADDR" ]; then LOG_ADDR=$LOGENTRIES_LOG_ADDR; fi
+
+# Print header
+function header()
+{
+    echo "-- LogEntries Downloader $SCRIPT_VERSION - Sylvain MAUDUIT (@Swop) --"
+}
+
+# Print program usage
+function usage()
+{
+header
+cat << EOF
+
+usage: $0 options
+
+Download logs from Logentries.
+
+OPTIONS:
+   -h               Show this message
+   -s timestamp     Start date (in seconds since epoch)
+   -e timestamp     End date (in seconds since epoch)
+   -y               Get yesterday logs (replace -s & -e options)
+   -a account_key   [Optional] Logentries account key
+   -l log_addr      [Optional] Logentries log address
+   -f filter        [Optional] Filter to use
+   -c count         [Optional] Maximal number of events downloaded
+   -q               [Optional] Quiet mode: Do not display anything 
+                    other than errors
+
+Logentries account key and log address can be set with options parameters or
+with LOGENTRIES_ACCOUNT_KEY and LOGENTRIES_LOG_ADDR environment variables.
+
+EOF
+}
+
+function log()
+{
+    echo "`date --iso-860=seconds` $1"
+}
+
+function logerr()
+{
+    echo "`date --iso-860=seconds` $1" >&2
+}
+
+# Parse agruments
+QUIET_MODE=false
+FILTER=
+COUNT=
+YESTERDAY_MODE=false
+while getopts “hs:e:ya:l:f:c:q” OPTION
+do
+    case $OPTION in
+        h)
+            usage
+            exit 0
+            ;;
+        s)
+            # If yesterday mode is enabled, skip the date configuration
+            if $YESTERDAY_MODE; then
+                continue
+            fi
+
+            # Check validity of param
+            if [[ $OPTARG != +([0-9]) ]]; then
+                usage
+                exit 1
+            fi
+
+            START_TIME=$[$OPTARG * 1000]
+            ;;
+        e)
+            # If yesterday mode is enabled, skip the date configuration
+            if $YESTERDAY_MODE; then
+                continue
+            fi
+
+            # Check validity of param
+            if [[ $OPTARG != +([0-9]) ]]; then
+                usage
+                exit 1
+            fi
+
+            END_TIME=$[$OPTARG * 1000]
+            ;;
+        y)
+            YESTERDAY_MODE=true
+            
+            # Generate start and end time based on yesterday timestamp
+            START_TIME=$[$(date --utc -d "`date +%D` -1day" +%s) * 1000]
+            END_TIME=$[$(date --utc -d "`date +%D`" +%s) * 1000]
+            ;;
+        a)
+            ACCOUNT_KEY=$OPTARG
+            ;;
+        l)
+            LOG_ADDR=$OPTARG
+            ;;
+        f)
+            FILTER=$OPTARG
+            ;;
+        c)
+            # Check validity of param
+            if [[ $OPTARG != +([0-9]) ]]; then
+                usage
+                exit 1
+            fi
+
+            COUNT=$OPTARG
+            ;;
+        q)
+            QUIET_MODE=true
+            ;;
+        ?)
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Check if all required configurations are present
+if [[ -z $START_TIME ]]                 \
+    || [[ -z $END_TIME ]]               \
+    || [[ -z $ACCOUNT_KEY ]]            \
+    || [[ -z $LOG_ADDR ]]
+then
+    usage
+    exit 1
+fi
+
+# Genereate temporary folder to store response file
+TMP_DIR=$(mktemp -d /tmp/logentries-downloader-XXXXXX)
+
+# Construct cURL command
+CURL_COMMAND="curl -G -sL -w %{http_code} -o ${TMP_DIR}/response.log \
+https://api.logentries.com/${ACCOUNT_KEY}/${LOG_ADDR}/ \
+-d start=${START_TIME} -d end=${END_TIME}"
+
+if [[ -n $FILTER ]]; then
+    CURL_COMMAND="$CURL_COMMAND -d filter=${FILTER}"
+fi
+
+if [[ -n $COUNT ]]; then
+    CURL_COMMAND="$CURL_COMMAND -d limit=${COUNT}"
+fi
+
+# ---- Start ----
+[[ $QUIET_MODE == false ]] && header
+[[ $QUIET_MODE == false ]] && log "Used cURL command: $CURL_COMMAND"
+
+response_code=`$CURL_COMMAND`
+
+# If someting goes wrong, display the response body in stderr
+if [[ "$response_code" != "200" ]]; then
+    logerr "ERROR: Something went wrong (response code: $response_code). \
+Response body:"
+
+    cat ${TMP_DIR}/response.log >&2
+    RETVAL=1
+else
+    [[ $QUIET_MODE == false ]] && log "Logs dowloaded with success"
+    cat ${TMP_DIR}/response.log
+    RETVAL=0
+fi
+
+# Delete temp dir
+rm -rf ${TMP_DIR}
+
+exit $RETVAL
