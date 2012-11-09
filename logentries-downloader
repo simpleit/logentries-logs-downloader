@@ -18,6 +18,12 @@
 #   with LOGENTRIES_ACCOUNT_KEY and LOGENTRIES_LOG_ADDR environment variables.
 # ****************************************************************************
 
+# Check if dependencies are installed
+DEPENDANCIES="curl mktemp readlink"
+for DEPT in $DEPENDANCIES; do
+  command -v $DEPT >/dev/null 2>&1 || { echo "'$DEPT' is required but it's not installed. Aborting." >&2; exit 1; }
+done
+
 SCRIPT_PATH=$(dirname `readlink -m "$0"`)
 SCRIPT_VERSION=0.1
 
