@@ -18,7 +18,7 @@
 #   with LOGENTRIES_ACCOUNT_KEY and LOGENTRIES_LOG_ADDR environment variables.
 # ****************************************************************************
 
-SCRIPT_PATH=$(dirname $0)
+SCRIPT_PATH=$(dirname `readlink -m "$0"`)
 SCRIPT_VERSION=0.1
 
 # Import configuration from config file if present

@@ -6,7 +6,8 @@ A simple Bash script to download your logs for backup purpose, thanks to LogEntr
 Requirements
 ---------------------
 
-You need to have **cURL** (http://curl.haxx.se/) and **mktemp** (http://www.mktemp.org/) installed on your machine.
+You need to have **cURL** (http://curl.haxx.se/) installed on your machine.
+Moreover, **mktemp** (http://www.mktemp.org/) and **readlink** must be available in your distribution.
 
 Installation
 ---------------------
