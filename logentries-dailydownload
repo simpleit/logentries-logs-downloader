@@ -1,0 +1,168 @@
+#!/bin/bash
+
+# ****************************************************************************
+#           .:: LogEntries Downloader - Daily Downloader ::.
+#
+#   Author: Sylvain Mauduit (@Swop)
+#   Company: Simple IT - http://www.simple-it.fr
+#
+#   Usage:
+#   $ logentries-dailydownload [-d logs_dir] [-z] [-s] [-m] [-p prefix]
+#
+# ****************************************************************************
+
+# Check if dependencies are installed
+DEPENDANCIES="readlink"
+for DEPT in $DEPENDANCIES; do
+  command -v $DEPT >/dev/null 2>&1 || { echo "'$DEPT' is required but it's not installed. Aborting." >&2; exit 1; }
+done
+
+SCRIPT_PATH=$(dirname `readlink -m "$0"`)
+
+# Print program usage
+function usage()
+{
+cat << EOF
+
+usage: $0 options
+
+Download the previous daylogs from Logentries, and organize logs into clean 
+date-style folder architecture.
+
+OPTIONS:
+   -h               Show this message
+   -d logs_dir      Directory to use for log storage 
+                    (default: /var/log/logentries)
+   -m               Create root logs_dir if absent
+   -p prefix        Prefix to use in logfile name (default: app)
+   -z               Compress logfiles
+   -s               Create a symlink to previous day logs, in logs folder root.
+EOF
+}
+
+function log()
+{
+    echo "`date --iso-860=seconds` $1"
+}
+
+function logerr()
+{
+    echo "`date --iso-860=seconds` $1" >&2
+}
+
+log "Start download of logs"
+
+# Parse arguments
+LOGS_DIRECTORY=/var/log/logentries
+PREFIX=app
+MKDIR=false
+COMPRESS_LOGS=false
+CREATE_SYMLINK=false
+while getopts “hd:zmp:s” OPTION
+do
+    case $OPTION in
+        h)
+            usage
+            exit 0
+            ;;
+        d)
+            LOGS_DIRECTORY=$(readlink -m "$OPTARG")
+            ;;
+        z)
+            command -v gzip >/dev/null 2>&1 || { echo "'gzip' is required but it's not installed. Aborting." >&2; exit 1; }
+            COMPRESS_LOGS=true
+            ;;
+        m)
+            MKDIR=true
+            ;;
+        p)
+            PREFIX=$OPTARG
+            ;;
+        s)
+            CREATE_SYMLINK=true
+            ;;
+        ?)
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Check the validity of logs directory path
+if [[ -d $LOGS_DIRECTORY ]]; then
+    if [[ ! -w $LOGS_DIRECTORY ]]; then
+        logerr "Logs directory must have write permission. Aborting."
+        exit 1
+    fi
+else
+    if $MKDIR; then
+            mkdir $LOGS_DIRECTORY
+            if [ $? -ne 0 ]; then
+                logerr "Error during creation of root log directory. Aborting."
+                exit 1
+            fi
+    else
+        logerr "Logs directory doesn't exists. Aborting."
+        exit 1
+    fi
+fi
+
+# Symlink can't be created if logs are compressed
+if $CREATE_SYMLINK && $COMPRESS_LOGS; then
+    logerr "Symlink creation can't be coupled with log compression. Aborting."
+    exit 1
+fi
+
+YESTERDAY_YEAR=$(date --utc -d "`date +%D` -1day" +%Y)
+YESTERDAY_MONTH=$(date --utc -d "`date +%D` -1day" +%m)
+YESTERDAY_DAY=$(date --utc -d "`date +%D` -1day" +%d)
+
+LOGFILE_NAME="${PREFIX}_${YESTERDAY_DAY}.log"
+LOGFILE_PARENT_PATH=${LOGS_DIRECTORY}/${YESTERDAY_YEAR}/${YESTERDAY_MONTH}
+LOGFILE_PATH=${LOGFILE_PARENT_PATH}/${LOGFILE_NAME}
+
+# Create folder architecture
+mkdir -p $LOGFILE_PARENT_PATH
+if [ $? -ne 0 ]; then
+    logerr "Error during creation of directory architecture. Aborting."
+    exit 1
+fi
+
+# Check if target log file can be write
+if [ -f $LOGFILE_PATH ] && [ ! -w $LOGFILE_PATH ]; then
+    logerr "The log file '$LOGFILE_NAME' already exists and is not writable. Aborting."
+    exit 1
+fi
+
+# Get the logs
+${SCRIPT_PATH}/logentries-downloader -y -q > $LOGFILE_PATH
+if [ $? -ne 0 ]; then
+    logerr "Error during log fetching. Aborting."
+    exit 1
+fi
+
+# Compress logs
+if $COMPRESS_LOGS; then
+    gzip -f $LOGFILE_PATH
+    if [ $? -ne 0 ]; then
+        logerr "Error during log compression. Aborting."
+        exit 1
+    fi
+fi
+
+# Create symlink
+if $CREATE_SYMLINK; then
+    if [[ ! -L ${LOGS_DIRECTORY}/${PREFIX}_yesterday.log ||  \
+        ! -w ${LOGS_DIRECTORY}/${PREFIX}_yesterday.log || \
+        ! -w ${LOGS_DIRECTORY} ]]; then 
+        logerr "Symlink could not be created (a previous file with the \
+same name already exists and could not be overwritten). Aborting."
+        exit 1
+    fi
+    rm -rf ${LOGS_DIRECTORY}/${PREFIX}_yesterday.log
+    ln -s $LOGFILE_PATH ${LOGS_DIRECTORY}/${PREFIX}_yesterday.log
+    if [ $? -ne 0 ]; then
+        logerr "Error during symlink creation. Aborting."
+        exit 1
+    fi
+fi
