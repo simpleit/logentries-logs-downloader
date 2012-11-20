@@ -1,2 +1,5 @@
 # Configuration file
 config
+
+# Logs directory (for testing purpose)
+logs
