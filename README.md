@@ -14,12 +14,12 @@ Installation
 To install the script, just clone this repository somewhere:
 
     git clone https://github.com/simpleit/logentries-logs-downloader.git
-    git checkout v0.1
+    git checkout vXXX
 
 or
 
-    wget https://github.com/simpleit/logentries-logs-downloader/archive/v0.1.tar.gz logentries-logs-downloader-v0.1.tar.gz
-    tar zxvf logentries-logs-downloader-v0.1.tar.gz
+    wget https://github.com/simpleit/logentries-logs-downloader/archive/vXXX.tar.gz logentries-logs-downloader-vXXX.tar.gz
+    tar zxvf logentries-logs-downloader-vXXX.tar.gz
 
 You can add `logentries-logs-downloader/logentries-downloader` script to your PATH for easier access.
 
@@ -45,11 +45,11 @@ The `account_key` and `log_addr` can be optional in this conditions:
 *   The relevant environment variables are set (see below)
 
 ### Use the configuration file  
-A configuration file can be use together with the script file. It's a good way if you allways want to get logs from the same Logentires account and/or the logs sent by the same web app.
+A configuration file can be use together with the script file. It's a good way if you always want to get logs from the same Logentires account and/or the logs sent by the same web app.
 
 The configuration file must be named `config` and be placed in the script installation directory (you can copy the `config.sample` file and fill it with your options).
 
-This two options can be set in the `config` file : `ACCOUNT_KEY` and `LOG_ADDR`, witch respectively sets the LogEntries Account Key and the LogEntries Log Adress (aka the server you want to download logs from. You can get this info in your LogEntries account).
+This two options can be set in the `config` file : `ACCOUNT_KEY` and `LOG_ADDR`, witch respectively sets the LogEntries Account Key and the LogEntries Log Address (aka the server you want to download logs from. You can get this info in your LogEntries account).
 
 Example:
 
@@ -84,3 +84,39 @@ Example:
 **Get all yesterday (12:00:00 AM to 11:59:59 PM) log entries, and just output logs and errors (perfect for CRON job)** *(with account and log address sets in config file or environment variables)*
 
     logentries-downloader -y -q > yesterday.log 2> error.log
+
+Daily logs dowloader
+---------------------
+
+You can use the `logentries-dailydownload` tool to simplify daily download of your log files.
+This tool use the `logentries-downloader` script to download the previous day logs, and keep a clean date-style folder architecture.
+
+Usage
+---------------------
+
+    usage: logentries-dailydownload options
+
+    OPTIONS:
+      -h               Show this message
+      -d logs_dir      Directory to use for log storage 
+                       (default: /var/log/logentries)
+      -m               Create root logs_dir if absent
+      -p prefix        Prefix to use in logfile name (default: app)
+      -z               Compress log files
+      -s               Create a symlink to previous day logs, in logs folder root.
+
+*Warning: The `account key` and `log addr` must be set in config file or be declared in the relevant environment variables. (See above to know how to use both of the two methods).*
+
+### Usage Examples
+
+**Get yesterday logs, and organize my logs into the default /var/log/logentries folder.**
+
+    logentries-dailydownload -m -s > /everything/is/good.log 2> /oops/something/failed.log
+
+**Get yesterday logs, and organize my logs into the /path/to/my/logs folder. Prefix the log files names like this : myapp_{dayofmonth}.log.gz (and yep, gzip them for me)**
+
+    logentries-dailydownload -d /path/to/my/logs -m -p myapp -z > /everything/is/good.log 2> /oops/somthing/failed.log
+
+**Get yesterday logs, and organize my logs into the /path/to/my/logs folder. Prefix the logfiles names like this : myapp_{dayofmonth}.log and create a symlink to easily access to the last log file**
+
+    logentries-dailydownload -d /path/to/my/logs -m -p myapp -s > /everything/is/good.log 2> /oops/somthing/failed.log
